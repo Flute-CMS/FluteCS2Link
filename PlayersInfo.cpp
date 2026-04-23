@@ -3,10 +3,13 @@
 #include "schemasystem/schemasystem.h"
 #include <nlohmann/json.hpp>
 
+#include <cerrno>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -44,17 +47,47 @@ bool IsValidSlot(int slot) noexcept {
   return slot >= 0 && slot < kMaxPlayers;
 }
 
+int GetSlotLimit() noexcept {
+  if (!gpGlobals || gpGlobals->maxClients <= 0)
+    return kMaxPlayers;
+  return gpGlobals->maxClients < kMaxPlayers ? gpGlobals->maxClients
+                                             : kMaxPlayers;
+}
+
+bool IsValidServerSlot(int slot) noexcept {
+  return slot >= 0 && slot < GetSlotLimit();
+}
+
+bool TryParseSlotArgument(const char *value, int &slot) noexcept {
+  if (!value || !*value)
+    return false;
+
+  for (const unsigned char *p = reinterpret_cast<const unsigned char *>(value);
+       *p; ++p) {
+    if (!std::isdigit(*p))
+      return false;
+  }
+
+  errno = 0;
+  char *end = nullptr;
+  const long parsed = std::strtol(value, &end, 10);
+  if (errno == ERANGE || end == value || !end || *end != '\0' ||
+      parsed > std::numeric_limits<int>::max())
+    return false;
+
+  slot = static_cast<int>(parsed);
+  return true;
+}
+
 bool IsRealPlayer(int slot) {
-  if (gpGlobals && slot >= gpGlobals->maxClients)
+  if (!IsValidServerSlot(slot))
     return false;
   CCSPlayerController *ctrl = CCSPlayerController::FromSlot(slot);
   if (!ctrl)
     return false;
-  if (ctrl->m_iConnected() != PlayerConnectedState::PlayerConnected)
-    return false;
   if (ctrl->IsBot())
     return false;
-  return true;
+  return ctrl->m_steamID() != 0;
 }
 
 bool EnsureSteamApi() {
@@ -216,14 +249,8 @@ json GetServerInfo() {
   jdata["score_ct"] = scores.ct;
   jdata["score_t"] = scores.t;
 
-  const int slotLimit =
-      (gpGlobals && gpGlobals->maxClients > 0 &&
-       gpGlobals->maxClients < kMaxPlayers)
-          ? gpGlobals->maxClients
-          : kMaxPlayers;
-
   json players = json::array();
-  for (int i = 0; i < slotLimit; ++i) {
+  for (int i = 0; i < GetSlotLimit(); ++i) {
     if (!IsRealPlayer(i)) {
       g_ConnectionTime[i] = 0;
       continue;
@@ -274,9 +301,9 @@ CON_COMMAND_F(mm_getinfo_slot,
     META_CONPRINT("usage: mm_getinfo_slot <slot>\n");
     return;
   }
-  const int slot = std::atoi(args[1]);
+  int slot = -1;
   json j;
-  if (IsValidSlot(slot) && IsRealPlayer(slot)) {
+  if (TryParseSlotArgument(args[1], slot) && IsRealPlayer(slot)) {
     if (g_ConnectionTime[slot] == 0)
       g_ConnectionTime[slot] = std::time(nullptr);
     if (CCSPlayerController *ctrl = CCSPlayerController::FromSlot(slot))
@@ -300,6 +327,8 @@ static void OnStartupServer() {
 }
 
 static void OnPlayerConnect(const char *, IGameEvent *pEvent, bool) {
+  if (!pEvent)
+    return;
   const int slot = pEvent->GetInt("userid");
   if (!IsValidSlot(slot))
     return;
@@ -307,6 +336,8 @@ static void OnPlayerConnect(const char *, IGameEvent *pEvent, bool) {
 }
 
 static void OnPlayerDisconnect(const char *, IGameEvent *pEvent, bool) {
+  if (!pEvent)
+    return;
   const int slot = pEvent->GetInt("userid");
   if (!IsValidSlot(slot))
     return;

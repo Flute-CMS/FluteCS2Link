@@ -68,6 +68,7 @@ mm_getinfo_file /var/www/html/stats.json
 |---|---|
 | Command invoked by a client | Silently unavailable (no `FCVAR_CLIENTCMD_CAN_EXECUTE`) |
 | `mm_getinfo_slot` with no arg | Console: `usage: mm_getinfo_slot <slot>` |
+| `mm_getinfo_slot` with a non-numeric arg | `mm_getinfo_slot` returns `{}` |
 | `mm_getinfo_file` with no arg | Console: `usage: mm_getinfo_file <path>` |
 | Slot out of range (≥ `maxClients`) | `mm_getinfo_slot` returns `{}` |
 | Empty server | `mm_getinfo` returns a JSON with `players: []`, `player_count: 0` |
