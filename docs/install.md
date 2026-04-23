@@ -21,7 +21,7 @@
    game/csgo/addons/metamod/PlayersInfo.vdf
    ```
 3. Restart the server (or `meta load addons/PlayersInfo/PlayersInfo`).
-4. Verify with `meta list` — you should see `PlayersInfo (1.2.0) by Pisex`.
+4. Verify with `meta list` — you should see `PlayersInfo (1.3.0) by Pisex`.
 
 ## Build from source
 
