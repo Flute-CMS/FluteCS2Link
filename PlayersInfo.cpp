@@ -58,6 +58,17 @@ bool IsValidServerSlot(int slot) noexcept {
   return slot >= 0 && slot < GetSlotLimit();
 }
 
+bool IsActivePlayerState(PlayerConnectedState state) noexcept {
+  switch (state) {
+    case PlayerConnectedState::PlayerConnected:
+    case PlayerConnectedState::PlayerConnecting:
+    case PlayerConnectedState::PlayerReconnecting:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool TryParseSlotArgument(const char *value, int &slot) noexcept {
   if (!value || !*value)
     return false;
@@ -84,6 +95,10 @@ bool IsRealPlayer(int slot) {
     return false;
   CCSPlayerController *ctrl = CCSPlayerController::FromSlot(slot);
   if (!ctrl)
+    return false;
+  // CS2 keeps controllers alive after disconnect; only active connection states
+  // should contribute to the live player list.
+  if (!IsActivePlayerState(ctrl->m_iConnected()))
     return false;
   if (ctrl->IsBot())
     return false;
@@ -397,7 +412,7 @@ void PlayersInfo::AllPluginsLoaded() {
 }
 
 const char *PlayersInfo::GetLicense() { return "GPL"; }
-const char *PlayersInfo::GetVersion() { return "1.3.0"; }
+const char *PlayersInfo::GetVersion() { return "1.3.1"; }
 const char *PlayersInfo::GetDate() { return __DATE__; }
 const char *PlayersInfo::GetLogTag() { return "PlayersInfo"; }
 const char *PlayersInfo::GetAuthor() { return "Pisex"; }

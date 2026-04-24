@@ -71,7 +71,9 @@ A single entry in `players[]`. Also returned directly by `mm_getinfo_slot N`.
 ## Not included
 
 - **Bots** (`CCSPlayerController::IsBot() == true`) are filtered out
-- **Connecting / disconnected slots** (`m_iConnected != PlayerConnected`)
+- **Disconnecting / disconnected / reserved controllers** — only active
+  controller states (`PlayerConnected`, `PlayerConnecting`,
+  `PlayerReconnecting`) are included
 - **Slots beyond `maxClients`** — on a 32-slot server, slots 32..63 are skipped
 - **HLTV** clients — caught by the `IsBot()` filter
 
