@@ -1,7 +1,9 @@
 #include "PlayersInfo.h"
+
+#include <nlohmann/json.hpp>
+
 #include "metamod_oslink.h"
 #include "schemasystem/schemasystem.h"
-#include <nlohmann/json.hpp>
 
 #include <cerrno>
 #include <cctype>

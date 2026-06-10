@@ -9,8 +9,13 @@ on:
       - main
   workflow_dispatch:
 
+env:
+  REPO_NAME: ${{ github.event.repository.name }}
+  PLUGIN_NAME: PlayersInfo
+
 jobs:
-  build:
+  build-linux:
+    name: Build (linux)
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -34,12 +39,11 @@ jobs:
           echo "tag=v$V" >> "$GITHUB_OUTPUT"
           echo "Plugin version: $V"
 
-      - name: Set up dependencies
+      - name: Set up build dependencies
         run: |
           export DEBIAN_FRONTEND=noninteractive
           apt-get update -qy
           apt-get install -y git binutils python3 python3-pip zip
-
           python3 -m pip install --upgrade pip importlib-metadata
           python3 -m pip install setuptools==45.2.0
 
@@ -54,7 +58,6 @@ jobs:
             https://github.com/alliedmodders/metamod-source.git
           git clone --recursive --branch cs2 --single-branch \
             https://github.com/alliedmodders/hl2sdk.git hl2sdk-cs2
-
           cd ../..
 
           git clone https://github.com/pisex/SchemaEntity.git
@@ -72,20 +75,127 @@ jobs:
       - name: Package addon into ZIP
         run: |
           cd build/package/addons
-          zip -r "${{ github.event.repository.name }}-${{ steps.pv.outputs.version }}.zip" .
-          mv "${{ github.event.repository.name }}-${{ steps.pv.outputs.version }}.zip" "${GITHUB_WORKSPACE}/"
+          zip -r "${{ env.REPO_NAME }}-${{ env.PLUGIN_NAME }}-${{ steps.pv.outputs.version }}-linux.zip" .
+          mv "${{ env.REPO_NAME }}-${{ env.PLUGIN_NAME }}-${{ steps.pv.outputs.version }}-linux.zip" "${GITHUB_WORKSPACE}/"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.event.repository.name }}-${{ steps.pv.outputs.version }}
-          path: ${{ github.workspace }}/${{ github.event.repository.name }}-${{ steps.pv.outputs.version }}.zip
+          name: ${{ env.REPO_NAME }}-${{ env.PLUGIN_NAME }}-${{ steps.pv.outputs.version }}-linux
+          path: ${{ github.workspace }}/${{ env.REPO_NAME }}-${{ env.PLUGIN_NAME }}-${{ steps.pv.outputs.version }}-linux.zip
+
+  build-windows:
+    name: Build (windows)
+    permissions:
+      contents: write
+    runs-on: windows-latest
+
+    env:
+      HL2SDK_ROOT: ${{ github.workspace }}\external
+      MMS_PATH: ${{ github.workspace }}\external\metamod-source
+      MANIFEST_PATH: ${{ github.workspace }}\external\metamod-source\hl2sdk-manifests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract plugin version
+        id: pv
+        shell: pwsh
+        run: |
+          $line = Select-String -Path PlayersInfo.cpp -Pattern 'GetVersion\(\) \{ return "[^"]+"' | Select-Object -First 1
+          $v = ([regex]::Match($line, '"([^"]+)"')).Groups[1].Value
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "tag=v$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Plugin version: $v"
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Set up Python and ambuild
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          git clone https://github.com/alliedmodders/ambuild.git ambuild
+          python -m pip install .\ambuild
+
+      - name: Clone HL2SDK and Metamod:Source
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path external | Out-Null
+          git clone --recursive --branch master --single-branch `
+            https://github.com/alliedmodders/metamod-source.git external\metamod-source
+          git clone --recursive --branch cs2 --single-branch `
+            https://github.com/alliedmodders/hl2sdk.git external\hl2sdk-cs2
+          git clone https://github.com/pisex/SchemaEntity.git SchemaEntity
+
+      - name: Patch SchemaEntity
+        shell: pwsh
+        run: |
+          (Get-Content SchemaEntity/schemasystem.cpp -Raw) `
+            -replace 'NetworkStateChanged_t', 'NetworkStateChangedData' | Set-Content SchemaEntity/schemasystem.cpp -NoNewline
+          (Get-Content SchemaEntity/CCSPlayerPawn.h -Raw) `
+            -replace 'FL_PAWN_FAKECLIENT', 'FL_FAKECLIENT' | Set-Content SchemaEntity/CCSPlayerPawn.h -NoNewline
+          (Get-Content SchemaEntity/CCSPlayerController.h -Raw) `
+            -replace 'FL_CONTROLLER_FAKECLIENT', 'FL_FAKECLIENT' | Set-Content SchemaEntity/CCSPlayerController.h -NoNewline
+
+      - name: Configure and build plugin
+        shell: pwsh
+        run: |
+          if (Test-Path build) { Remove-Item -Recurse -Force build }
+          New-Item -ItemType Directory -Force -Path build | Out-Null
+          Set-Location build
+          $env:MMSOURCE112 = $env:MMS_PATH
+          $env:HL2SDKCS2 = Join-Path $env:HL2SDK_ROOT 'hl2sdk-cs2'
+          python ../configure.py -s cs2 --targets x86_64 --enable-optimize `
+            --hl2sdk-manifests=$env:MANIFEST_PATH `
+            --mms_path=$env:MMS_PATH `
+            --hl2sdk-root=$env:HL2SDK_ROOT
+          ambuild
+
+      - name: Package addon into ZIP
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.pv.outputs.version }}"
+          $name = "${{ env.REPO_NAME }}-${{ env.PLUGIN_NAME }}-$ver-windows.zip"
+          $src = "build\package\addons"
+          $dst = Join-Path $env:GITHUB_WORKSPACE $name
+          if (Test-Path $dst) { Remove-Item $dst -Force }
+          Compress-Archive -Path "$src\*" -DestinationPath $dst
+          Write-Host "Packed: $dst"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.REPO_NAME }}-${{ env.PLUGIN_NAME }}-${{ steps.pv.outputs.version }}-windows
+          path: ${{ github.workspace }}/${{ env.REPO_NAME }}-${{ env.PLUGIN_NAME }}-${{ steps.pv.outputs.version }}-windows.zip
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Extract plugin version
+        id: pv
+        run: |
+          V=$(grep -oE 'GetVersion\(\) \{ return "[^"]+"' PlayersInfo.cpp | grep -oE '"[^"]+"' | tr -d '"')
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "tag=v$V" >> "$GITHUB_OUTPUT"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
 
       - name: Check if release already exists
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         id: release_check
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if gh release view "${{ steps.pv.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
@@ -94,11 +204,11 @@ jobs:
           fi
 
       - name: Create release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.release_check.outputs.exists == 'false'
+        if: steps.release_check.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.pv.outputs.tag }}
-          name: ${{ steps.pv.outputs.tag }}
-          files: ${{ github.workspace }}/${{ github.event.repository.name }}-${{ steps.pv.outputs.version }}.zip
+          tag_name: v${{ steps.pv.outputs.version }}
+          name: v${{ steps.pv.outputs.version }}
+          files: artifacts/*
           generate_release_notes: true
           make_latest: "true"
