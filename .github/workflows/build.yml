@@ -124,12 +124,17 @@ jobs:
       - name: Clone HL2SDK and Metamod:Source
         shell: pwsh
         run: |
+          # All sibling repos must be cloned next to the plugin source tree, not inside it.
+          # AMBuilder resolves '..\SchemaEntity' relative to the plugin dir, expecting a
+          # sibling folder.
+          Set-Location $env:GITHUB_WORKSPACE
           New-Item -ItemType Directory -Force -Path external | Out-Null
           git clone --recursive --branch master --single-branch `
             https://github.com/alliedmodders/metamod-source.git external\metamod-source
           git clone --recursive --branch cs2 --single-branch `
             https://github.com/alliedmodders/hl2sdk.git external\hl2sdk-cs2
           git clone https://github.com/pisex/SchemaEntity.git SchemaEntity
+          Set-Location -Path (Join-Path $env:GITHUB_WORKSPACE $env:REPO_NAME)
 
       - name: Patch SchemaEntity
         shell: pwsh
