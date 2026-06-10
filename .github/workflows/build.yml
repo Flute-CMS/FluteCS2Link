@@ -124,17 +124,22 @@ jobs:
       - name: Clone HL2SDK and Metamod:Source
         shell: pwsh
         run: |
-          # All sibling repos must be cloned next to the plugin source tree, not inside it.
-          # AMBuilder resolves '..\SchemaEntity' relative to the plugin dir, expecting a
-          # sibling folder.
-          Set-Location $env:GITHUB_WORKSPACE
-          New-Item -ItemType Directory -Force -Path external | Out-Null
+          # GITHUB_WORKSPACE on Windows runners equals the plugin source dir itself
+          # (e.g. D:\a\FluteCS2Link\FluteCS2Link). AMBuilder hardcodes
+          # '..\SchemaEntity' relative to that dir, so the SchemaEntity checkout
+          # has to live one level up — the runner root.
+          $pluginRoot = $env:GITHUB_WORKSPACE
+          $runnerRoot = Split-Path -Parent $pluginRoot
+          Set-Location $runnerRoot
+          New-Item -ItemType Directory -Force -Path (Join-Path $pluginRoot 'external') | Out-Null
           git clone --recursive --branch master --single-branch `
-            https://github.com/alliedmodders/metamod-source.git external\metamod-source
+            https://github.com/alliedmodders/metamod-source.git `
+            (Join-Path $pluginRoot 'external\metamod-source')
           git clone --recursive --branch cs2 --single-branch `
-            https://github.com/alliedmodders/hl2sdk.git external\hl2sdk-cs2
+            https://github.com/alliedmodders/hl2sdk.git `
+            (Join-Path $pluginRoot 'external\hl2sdk-cs2')
           git clone https://github.com/pisex/SchemaEntity.git SchemaEntity
-          Set-Location -Path (Join-Path $env:GITHUB_WORKSPACE $env:REPO_NAME)
+          Set-Location $pluginRoot
 
       - name: Patch SchemaEntity
         shell: pwsh
