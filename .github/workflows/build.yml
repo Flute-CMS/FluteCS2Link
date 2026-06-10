@@ -144,12 +144,15 @@ jobs:
       - name: Patch SchemaEntity
         shell: pwsh
         run: |
+          # SchemaEntity lives in the runner root (one above the plugin dir).
+          Set-Location (Split-Path -Parent $env:GITHUB_WORKSPACE)
           (Get-Content SchemaEntity/schemasystem.cpp -Raw) `
             -replace 'NetworkStateChanged_t', 'NetworkStateChangedData' | Set-Content SchemaEntity/schemasystem.cpp -NoNewline
           (Get-Content SchemaEntity/CCSPlayerPawn.h -Raw) `
             -replace 'FL_PAWN_FAKECLIENT', 'FL_FAKECLIENT' | Set-Content SchemaEntity/CCSPlayerPawn.h -NoNewline
           (Get-Content SchemaEntity/CCSPlayerController.h -Raw) `
             -replace 'FL_CONTROLLER_FAKECLIENT', 'FL_FAKECLIENT' | Set-Content SchemaEntity/CCSPlayerController.h -NoNewline
+          Set-Location $env:GITHUB_WORKSPACE
 
       - name: Configure and build plugin
         shell: pwsh
