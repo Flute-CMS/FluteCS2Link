@@ -17,11 +17,19 @@ struct CTakeDamageInfoContainer;
 class CTakeDamageInfo;
 class IGameEventListener2;
 
+struct trace_info_t;
+
 /////////////////////////////////////////////////////////////////
 ///////////////////////      PLAYERS     //////////////////////////
 /////////////////////////////////////////////////////////////////
 
 typedef std::function<void(int iSlot, uint64 iSteamID64)> OnClientAuthorizedCallback;
+
+struct FakeConVar
+{
+    std::string szCvar;
+    std::string szValue;
+};
 
 #define PLAYERS_INTERFACE "IPlayersApi"
 class IPlayersApi
@@ -50,6 +58,21 @@ public:
 	virtual void EmitSound(int iSlot, CEntityIndex ent, std::string sound_name, int pitch, float volume) = 0;
 	virtual void StopSoundEvent(int iSlot, const char* sound_name) = 0;
     virtual IGameEventListener2* GetLegacyGameEventListener(int iSlot) = 0;
+    virtual int FindPlayer(uint64 iSteamID64) = 0;
+    virtual int FindPlayer(const CSteamID* steamID) = 0;
+    virtual int FindPlayer(const char* szName) = 0;
+    virtual trace_info_t RayTrace(int iSlot) = 0;
+    virtual bool UseClientCommand(int iSlot, const char* szCommand) = 0;
+    // bHook - если true, то вызов будет через хук OnTakeDamage с возможностью отмены, если false - прямой вызов функции нанесения урона без хуков
+    virtual void TakeDamage(int iSlot, CTakeDamageInfo* pInfo, bool bHook = true) = 0;
+    virtual void RemoveWeapons(int iSlot) = 0;
+    
+    virtual void SetConVar(int iSlot, FakeConVar cvar) = 0;
+    virtual void SetConVar(int iSlot, const char* name, const char* value) = 0;
+    virtual void SetConVar(std::vector<int> vPlayers, const char* name, const char* value) = 0;
+    virtual void SetConVar(std::vector<int> vPlayers, FakeConVar cvar) = 0;
+    virtual void SetConVars(int iSlot, std::vector<FakeConVar> cvars) = 0;
+    virtual void SetConVars(std::vector<int> vPlayers, std::vector<FakeConVar> cvars) = 0;
 };
 
 /////////////////////////////////////////////////////////////////
@@ -67,8 +90,9 @@ typedef std::function<bool(int iSlot, const char* szContent, bool bMute, bool bT
 typedef std::function<void(const char* szName, IGameEvent* pEvent, bool bDontBroadcast)> EventCallback;
 typedef std::function<void()> StartupCallback;
 typedef std::function<bool(int iSlot, CTakeDamageInfoContainer *&pInfoContainer)> OnTakeDamageCallback;
-typedef std::function<bool(int iSlot, CTakeDamageInfo &pInfo)> OnTakeDamagePreCallback;
+typedef std::function<bool(int iSlot, CTakeDamageInfo *pInfo)> OnTakeDamagePreCallback;
 typedef std::function<bool(int iSlot)> OnHearingClientCallback;
+typedef std::function<void(const char* szMap)> MapStartCallback;
 
 class IUtilsApi
 {
@@ -121,6 +145,11 @@ public:
     virtual void TeleportEntity(CBaseEntity* pEnt, const Vector *position, const QAngle *angles, const Vector *velocity) = 0;
     virtual void HookIsHearingClient(SourceMM::PluginId id, OnHearingClientCallback callback) = 0;
     virtual const char* GetVersion() = 0;
+    
+    virtual void MapEndHook(SourceMM::PluginId id, StartupCallback fn) = 0;
+    virtual void MapStartHook(SourceMM::PluginId id, MapStartCallback fn) = 0;
+
+    virtual const char* GetServerID() = 0;
 };
 
 /////////////////////////////////////////////////////////////////
@@ -174,6 +203,13 @@ struct MenuPlayer
     }
 };
 
+enum class MenuType : int
+{
+    CHAT = 0,
+    CENTER = 1,
+    CENTER_WASD = 2,
+};
+
 class IMenusApi
 {
 public:
@@ -187,6 +223,8 @@ public:
     virtual std::string escapeString(const std::string& input) = 0;
     virtual bool IsMenuOpen(int iSlot) = 0;
 	virtual void DisplayPlayerMenu(Menu& hMenu, int iSlot, bool bClose = true, bool bReset = true) = 0;
+    virtual void AddRawItemMenu(Menu &hMenu, const char* sBack, const char* sText, int iType = 1) = 0;
+    virtual MenuType GetMenuType(int iSlot) = 0;
 };
 
 /////////////////////////////////////////////////////////////////
